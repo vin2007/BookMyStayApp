@@ -2,4 +2,4 @@
 
 
 
-iignore this repo is for weekly college assignment
+ignore this repo is for weekly college assignment
