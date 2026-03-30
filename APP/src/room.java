@@ -1,17 +1,33 @@
-import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.Queue;
 
 
-// Custom Exception Class
-class InvalidBookingException extends Exception {
+// Booking Request Class
+class BookingRequest {
 
-    public InvalidBookingException(String message) {
-        super(message);
+    private String guestName;
+    private String roomType;
+
+    public BookingRequest(String guestName,
+                          String roomType) {
+
+        this.guestName = guestName;
+        this.roomType = roomType;
+    }
+
+    public String getGuestName() {
+        return guestName;
+    }
+
+    public String getRoomType() {
+        return roomType;
     }
 }
 
 
-// Room Inventory Manager
+// Shared Inventory Manager (Thread Safe)
 class RoomInventory {
 
     private Map<String, Integer> inventory;
@@ -26,48 +42,24 @@ class RoomInventory {
     }
 
 
-    public void validateRoomType(String roomType)
-            throws InvalidBookingException {
+    public synchronized boolean allocateRoom(
+            String roomType) {
 
-        if (!inventory.containsKey(roomType)) {
+        if (inventory.get(roomType) > 0) {
 
-            throw new InvalidBookingException(
-                    "Invalid room type selected: "
-                            + roomType);
+            inventory.put(roomType,
+                    inventory.get(roomType) - 1);
+
+            return true;
         }
+
+        return false;
     }
 
 
-    public void validateAvailability(String roomType)
-            throws InvalidBookingException {
+    public synchronized void displayInventory() {
 
-        if (inventory.get(roomType) <= 0) {
-
-            throw new InvalidBookingException(
-                    "Room not available: "
-                            + roomType);
-        }
-    }
-
-
-    public void reserveRoom(String roomType)
-            throws InvalidBookingException {
-
-        validateRoomType(roomType);
-
-        validateAvailability(roomType);
-
-        inventory.put(roomType,
-                inventory.get(roomType) - 1);
-
-        System.out.println("Room reserved successfully: "
-                + roomType);
-    }
-
-
-    public void displayInventory() {
-
-        System.out.println("\nCurrent Inventory Status:");
+        System.out.println("\nFinal Inventory Status:");
 
         for (String room : inventory.keySet()) {
 
@@ -78,77 +70,142 @@ class RoomInventory {
 }
 
 
-// Booking Validator Service
-class BookingValidatorService {
+// Shared Booking Queue
+class BookingQueue {
 
-    public void validateBookingInput(String guestName,
-                                     String roomType)
-            throws InvalidBookingException {
+    private Queue<BookingRequest> queue =
+            new LinkedList<>();
 
-        if (guestName == null
-                || guestName.trim().isEmpty()) {
 
-            throw new InvalidBookingException(
-                    "Guest name cannot be empty");
+    public synchronized void addRequest(
+            BookingRequest request) {
+
+        queue.add(request);
+
+        System.out.println("Request added: "
+                + request.getGuestName());
+    }
+
+
+    public synchronized BookingRequest getRequest() {
+
+        return queue.poll();
+    }
+}
+
+
+// Booking Processor Thread
+class BookingProcessor extends Thread {
+
+    private BookingQueue bookingQueue;
+    private RoomInventory inventory;
+
+    public BookingProcessor(
+            BookingQueue bookingQueue,
+            RoomInventory inventory) {
+
+        this.bookingQueue = bookingQueue;
+        this.inventory = inventory;
+    }
+
+
+    public void run() {
+
+        BookingRequest request;
+
+        while ((request =
+                bookingQueue.getRequest()) != null) {
+
+            processRequest(request);
         }
+    }
 
-        if (roomType == null
-                || roomType.trim().isEmpty()) {
 
-            throw new InvalidBookingException(
-                    "Room type must be selected");
+    private void processRequest(
+            BookingRequest request) {
+
+        synchronized (inventory) {
+
+            boolean allocated =
+                    inventory.allocateRoom(
+                            request.getRoomType());
+
+            if (allocated) {
+
+                System.out.println(
+                        request.getGuestName()
+                                + " successfully booked "
+                                + request.getRoomType());
+
+            } else {
+
+                System.out.println(
+                        "Booking failed for "
+                                + request.getGuestName()
+                                + " (No rooms available)");
+            }
         }
     }
 }
 
 
 // Main Class
-public class UseCase9ErrorHandlingValidation {
+public class UseCase11ConcurrentBookingSimulation {
 
     public static void main(String[] args) {
 
         RoomInventory inventory =
                 new RoomInventory();
 
-        BookingValidatorService validator =
-                new BookingValidatorService();
+        BookingQueue queue =
+                new BookingQueue();
+
+
+        queue.addRequest(
+                new BookingRequest(
+                        "Pranjal",
+                        "Single Room"));
+
+        queue.addRequest(
+                new BookingRequest(
+                        "Rahul",
+                        "Single Room"));
+
+        queue.addRequest(
+                new BookingRequest(
+                        "Sneha",
+                        "Single Room"));
+
+        queue.addRequest(
+                new BookingRequest(
+                        "Amit",
+                        "Suite Room"));
+
+
+        BookingProcessor processor1 =
+                new BookingProcessor(
+                        queue,
+                        inventory);
+
+        BookingProcessor processor2 =
+                new BookingProcessor(
+                        queue,
+                        inventory);
+
+
+        processor1.start();
+        processor2.start();
 
 
         try {
 
-            String guestName = "Pranjal";
-            String roomType = "Suite Room";
+            processor1.join();
+            processor2.join();
 
-            validator.validateBookingInput(
-                    guestName,
-                    roomType);
+        } catch (InterruptedException e) {
 
-            inventory.reserveRoom(roomType);
-
-
-        } catch (InvalidBookingException e) {
-
-            System.out.println("Booking Failed: "
-                    + e.getMessage());
-        }
-
-
-        try {
-
-            String guestName = "";
-            String roomType = "Luxury Room";
-
-            validator.validateBookingInput(
-                    guestName,
-                    roomType);
-
-            inventory.reserveRoom(roomType);
-
-
-        } catch (InvalidBookingException e) {
-
-            System.out.println("Booking Failed: "
-                    + e.getMessage());
+            System.out.println(
+                    "Thread interrupted");
         }
 
 
